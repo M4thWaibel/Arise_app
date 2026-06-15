@@ -1,0 +1,14 @@
+# EAS reinstala as dependências e roda o prebuild na nuvem — então não precisa
+# subir node_modules nem a pasta android/ gerada localmente (que estava com a
+# sujeira do build que falhou no Windows). Excluir android/ força um prebuild
+# LIMPO no servidor, pegando os config plugins e o módulo system-guard corretos.
+node_modules/
+android/
+ios/
+.expo/
+dist/
+.gradle/
+**/build/
+**/.cxx/
+*.log
+.venv/
