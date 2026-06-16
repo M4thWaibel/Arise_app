@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -36,6 +36,7 @@ import {
 import { startAutoSync, syncNow } from '@/sync/syncEngine';
 import { startHealthSync } from '@/services/health/metricQuests';
 import { startGuardController } from '@/services/softlock/guardController';
+import { updateAllWidgets } from '@/widgets/update';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -81,6 +82,26 @@ export default function RootLayout() {
     // Soft-Lock: drive the native guard from penalty/focus-gate state.
     startGuardController();
   }, [ready, ensureFreshDay]);
+
+  // Home-screen widgets: push an initial snapshot, then refresh (debounced) on
+  // any game-state change and whenever the app leaves the foreground.
+  useEffect(() => {
+    if (!ready) return;
+    void updateAllWidgets();
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useGame.subscribe(() => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => void updateAllWidgets(), 800);
+    });
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') void updateAllWidgets();
+    });
+    return () => {
+      if (t) clearTimeout(t);
+      unsub();
+      sub.remove();
+    };
+  }, [ready]);
 
   // Keep the penalty countdown reminders in sync with the active penalty.
   useEffect(() => {

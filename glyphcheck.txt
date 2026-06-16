@@ -1,0 +1,5 @@
+warn U+26A0 count=2
+square U+25A1 count=1
+check U+2713 count=1
+middot U+00B7 count=5
+tilde U+007E count=2

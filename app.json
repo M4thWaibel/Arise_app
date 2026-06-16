@@ -69,7 +69,52 @@
           "color": "#3DA9FC"
         }
       ],
-      "./modules/system-guard/app.plugin.js"
+      "./modules/system-guard/app.plugin.js",
+      [
+        "react-native-android-widget",
+        {
+          "fonts": [
+            "./assets/fonts/Rajdhani_700Bold.ttf",
+            "./assets/fonts/Rajdhani_600SemiBold.ttf",
+            "./assets/fonts/JetBrainsMono_400Regular.ttf"
+          ],
+          "widgets": [
+            {
+              "name": "AriseHud",
+              "label": "ARISE — HUD",
+              "description": "Rank, nível, XP e quests do dia",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "AriseQuests",
+              "label": "ARISE — Quests do dia",
+              "description": "Progresso e quests pendentes",
+              "minWidth": "250dp",
+              "minHeight": "150dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "AriseCompact",
+              "label": "ARISE — Compacto",
+              "description": "Nível, rank, streak e XP",
+              "minWidth": "180dp",
+              "minHeight": "80dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 1,
+              "resizeMode": "horizontal",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
