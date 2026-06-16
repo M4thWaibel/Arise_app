@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, KeyboardAvoidingView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,7 +24,7 @@ export function CreateHabitOverlay() {
   const diffEntries = Object.entries(DIFF) as [DiffKey, (typeof DIFF)[DiffKey]][];
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView style={styles.root} behavior="padding">
       <Pressable style={styles.backdrop} onPress={closeOverlay} />
       <LinearGradient
         colors={['#0B1322', '#070A12']}
@@ -184,7 +184,7 @@ export function CreateHabitOverlay() {
           </View>
         </ScrollView>
       </LinearGradient>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
