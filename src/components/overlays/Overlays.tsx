@@ -5,6 +5,7 @@ import { LevelUpOverlay } from './LevelUpOverlay';
 import { DistributeOverlay } from './DistributeOverlay';
 import { PenaltyOverlay } from './PenaltyOverlay';
 import { DungeonDetailOverlay } from './DungeonDetailOverlay';
+import { CreateDungeonOverlay } from './CreateDungeonOverlay';
 import { CreateHabitOverlay } from './CreateHabitOverlay';
 import { SettingsOverlay } from './SettingsOverlay';
 import { SealedAppsOverlay } from './SealedAppsOverlay';
@@ -19,6 +20,7 @@ export function Overlays() {
     <>
       <QuestXpFloat />
       {overlay === 'dungeon' && <DungeonDetailOverlay />}
+      {overlay === 'dungeonCreate' && <CreateDungeonOverlay />}
       {overlay === 'settings' && <SettingsOverlay />}
       {overlay === 'sealed' && <SealedAppsOverlay />}
       {overlay === 'focusgate' && <FocusGateOverlay />}

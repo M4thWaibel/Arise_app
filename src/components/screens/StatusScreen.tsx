@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, Fonts, ATTRS, RANK_COLOR, RARITY_COLOR } from '@/theme/tokens';
-import { xpForLevel } from '@/game/logic';
+import { xpForLevel, xpForAttrLevel } from '@/game/logic';
 import { useGame } from '@/store/gameStore';
 import { BracketCorners, ProgressBar } from '@/components/ui/primitives';
 import { IconStar, IconChevronRight, IconGear } from '@/components/ui/icons';
@@ -222,7 +222,7 @@ export function StatusScreen() {
         <Text style={[styles.sysLabel, { marginBottom: 14 }]}>[ ATRIBUTOS ]</Text>
         {ATTRS.map((m) => {
           const a = s.attrs[m.key];
-          const mx = xpForLevel(a.level);
+          const mx = xpForAttrLevel(a.level);
           const pct = Math.min(100, Math.round((a.xp / mx) * 100));
           return (
             <View key={m.key} style={{ marginBottom: 13 }}>

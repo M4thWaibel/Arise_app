@@ -8,6 +8,8 @@ import { Colors, Fonts, FILL } from '@/theme/tokens';
 import { useGame } from '@/store/gameStore';
 import { IconChevronLeft, IconChevronRight, IconTrash } from '@/components/ui/icons';
 import { loginAndSync, logoutSync, syncNow } from '@/sync/syncEngine';
+import { ensurePermissions as connectHealthConnect } from '@/services/health/HealthService';
+import { startHealthSync } from '@/services/health/metricQuests';
 
 const TZ_OPTIONS = ['UTC−3 · Brasília', 'UTC−2 · Fern. de Noronha', 'UTC−4 · Manaus'];
 const SEX_OPTIONS: [string, string][] = [
@@ -67,6 +69,18 @@ export function SettingsOverlay() {
   const onLogout = async () => {
     await logoutSync();
     setCloudMsg(null);
+  };
+
+  const [healthMsg, setHealthMsg] = useState<string | null>(null);
+  const onConnectHealth = async () => {
+    setHealthMsg('Abrindo o Health Connect…');
+    const granted = await connectHealthConnect();
+    if (granted) {
+      startHealthSync();
+      setHealthMsg('Conectado! Quests com meta de passos/sono/treino se autocompletam.');
+    } else {
+      setHealthMsg('Indisponível ou permissão negada. Instale/abra o app Health Connect.');
+    }
   };
 
   const lastSyncLabel =
@@ -250,6 +264,20 @@ export function SettingsOverlay() {
             <Text style={styles.help}>
               O app funciona offline. A nuvem serve para backup e sincronizar entre aparelhos.
             </Text>
+          </LinearGradient>
+
+          {/* HEALTH CONNECT */}
+          <LinearGradient colors={['rgba(20,33,58,0.5)', 'rgba(8,14,26,0.6)']} start={{ x: 0.1, y: 0 }} end={{ x: 0.7, y: 1 }} style={styles.card}>
+            <Text style={[styles.cardLabel, { marginBottom: 12 }]}>[ HEALTH CONNECT ]</Text>
+            <Text style={styles.help}>
+              Conecte para quests com meta automática (passos, sono, treino) se autocompletarem sozinhas.
+            </Text>
+            <Pressable onPress={onConnectHealth} style={{ marginTop: 12 }}>
+              <LinearGradient colors={['#00C2FF', '#1E6FD0']} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.saveBtn}>
+                <Text style={styles.saveText}>CONECTAR HEALTH CONNECT</Text>
+              </LinearGradient>
+            </Pressable>
+            {healthMsg && <Text style={styles.help}>{healthMsg}</Text>}
           </LinearGradient>
 
           {/* SOFT-LOCK */}

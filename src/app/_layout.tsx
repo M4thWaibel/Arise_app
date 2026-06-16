@@ -34,7 +34,6 @@ import {
   cancelPenaltyCountdown,
 } from '@/services/NotificationService';
 import { startAutoSync, syncNow } from '@/sync/syncEngine';
-import { ensurePermissions as ensureHealthPermissions } from '@/services/health/HealthService';
 import { startHealthSync } from '@/services/health/metricQuests';
 import { startGuardController } from '@/services/softlock/guardController';
 
@@ -75,11 +74,10 @@ export default function RootLayout() {
       startAutoSync();
       void syncNow();
     }
-    // Health Connect: request permission once, then auto-complete metric quests.
-    (async () => {
-      await ensureHealthPermissions();
-      startHealthSync();
-    })().catch(() => {});
+    // Health Connect: only READ metrics (no permission prompt at launch — the
+    // grant flow needs a native Activity hook that's wired separately, so we
+    // never call requestPermission here). Safe no-op if HC isn't granted yet.
+    startHealthSync();
     // Soft-Lock: drive the native guard from penalty/focus-gate state.
     startGuardController();
   }, [ready, ensureFreshDay]);

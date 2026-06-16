@@ -16,6 +16,7 @@ export function CreateHabitOverlay() {
   const setFormDiff = useGame((s) => s.setFormDiff);
   const setFormMetric = useGame((s) => s.setFormMetric);
   const setFormMetricGoal = useGame((s) => s.setFormMetricGoal);
+  const setFormSideQuest = useGame((s) => s.setFormSideQuest);
   const toggleFormMandatory = useGame((s) => s.toggleFormMandatory);
   const saveHabit = useGame((s) => s.saveHabit);
   const closeOverlay = useGame((s) => s.closeOverlay);
@@ -130,6 +131,18 @@ export function CreateHabitOverlay() {
             />
           )}
 
+          <Text style={styles.fieldLabel}>SIDE-QUEST (OPCIONAL · +10% XP)</Text>
+          <TextInput
+            value={form.sideQuest}
+            onChangeText={setFormSideQuest}
+            placeholder="Ex.: 50 abdominais"
+            placeholderTextColor={Colors.label}
+            style={[styles.input, { marginBottom: 8 }]}
+          />
+          <Text style={styles.sideHint}>
+            Um objetivo extra. Marque-o como feito antes de concluir a quest para ganhar +10% de XP.
+          </Text>
+
           <Pressable onPress={toggleFormMandatory} style={styles.mandRow}>
             <View>
               <Text style={styles.mandTitle}>Obrigatória?</Text>
@@ -223,6 +236,7 @@ const styles = StyleSheet.create({
   metricRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
   metricOpt: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 6, borderWidth: 1 },
   metricText: { fontFamily: Fonts.rajSemiBold, fontSize: 12 },
+  sideHint: { fontFamily: Fonts.chivoRegular, fontSize: 11, color: '#8DA0C2', lineHeight: 15.5, marginBottom: 20 },
   mandRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -12,11 +12,14 @@ import type { Quest } from '@/game/types';
 
 function QuestRow({ q }: { q: Quest }) {
   const toggleQuest = useGame((s) => s.toggleQuest);
+  const toggleSideQuest = useGame((s) => s.toggleSideQuest);
   const openEditHabit = useGame((s) => s.openEditHabit);
   const d = DIFF[q.diff];
   const ac = ATTR_COLOR[q.attr];
   const checkBg = q.done ? ac : 'transparent';
   const checkBorder = q.done ? ac : 'rgba(120,150,200,0.4)';
+  const sideBg = q.sideQuestDone ? ac : 'transparent';
+  const sideBorder = q.sideQuestDone ? ac : 'rgba(120,150,200,0.4)';
   return (
     <LinearGradient
       colors={['rgba(20,33,58,0.5)', 'rgba(8,14,26,0.55)']}
@@ -24,44 +27,72 @@ function QuestRow({ q }: { q: Quest }) {
       end={{ x: 0.7, y: 1 }}
       style={[styles.row, { opacity: q.done ? 0.6 : 1 }]}
     >
-      <Pressable
-        onPress={() => toggleQuest(q.id)}
-        style={[
-          styles.check,
-          {
-            borderColor: checkBorder,
-            backgroundColor: checkBg,
-            shadowColor: checkBg,
-            shadowOpacity: q.done ? 0.4 : 0,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 0 },
-          },
-        ]}
-      >
-        {q.done && <IconCheck size={15} color={Colors.bgBase} />}
-      </Pressable>
-      <Pressable onPress={() => openEditHabit(q.id)} style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.qName, { color: q.done ? Colors.labelDim : Colors.text }]}>{q.name}</Text>
-        <View style={styles.qMeta}>
-          <Text style={[styles.attrTag, { color: ac, borderColor: ac + '66' }]}>{q.attr}</Text>
+      <View style={styles.topRow}>
+        <Pressable
+          onPress={() => toggleQuest(q.id)}
+          style={[
+            styles.check,
+            {
+              borderColor: checkBorder,
+              backgroundColor: checkBg,
+              shadowColor: checkBg,
+              shadowOpacity: q.done ? 0.4 : 0,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 0 },
+            },
+          ]}
+        >
+          {q.done && <IconCheck size={15} color={Colors.bgBase} />}
+        </Pressable>
+        <Pressable onPress={() => openEditHabit(q.id)} style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.qName, { color: q.done ? Colors.labelDim : Colors.text }]}>{q.name}</Text>
+          <View style={styles.qMeta}>
+            <Text style={[styles.attrTag, { color: ac, borderColor: ac + '66' }]}>{q.attr}</Text>
+            <Text
+              style={[
+                styles.mTag,
+                {
+                  color: q.mandatory ? Colors.redSofter : '#6E84A8',
+                  backgroundColor: q.mandatory ? 'rgba(255,45,85,0.10)' : 'rgba(120,150,200,0.07)',
+                },
+              ]}
+            >
+              {q.mandatory ? 'OBRIGATÓRIA' : 'OPCIONAL'}
+            </Text>
+            <Text style={styles.seq}>SEQ {q.streak}</Text>
+          </View>
+        </Pressable>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={[styles.xp, { color: d.color }]}>+{d.xp}</Text>
+          <Text style={styles.diffLabel}>{d.label}</Text>
+        </View>
+      </View>
+
+      {q.sideQuest ? (
+        <View style={styles.sideRow}>
+          <Pressable
+            onPress={() => toggleSideQuest(q.id)}
+            disabled={q.done}
+            hitSlop={6}
+            style={[styles.sideCheck, { borderColor: sideBorder, backgroundColor: sideBg }]}
+          >
+            {q.sideQuestDone && <IconCheck size={11} color={Colors.bgBase} />}
+          </Pressable>
           <Text
             style={[
-              styles.mTag,
+              styles.sideText,
               {
-                color: q.mandatory ? Colors.redSofter : '#6E84A8',
-                backgroundColor: q.mandatory ? 'rgba(255,45,85,0.10)' : 'rgba(120,150,200,0.07)',
+                color: q.sideQuestDone ? Colors.textSoft : '#8DA0C2',
+                textDecorationLine: q.sideQuestDone ? 'line-through' : 'none',
               },
             ]}
+            numberOfLines={1}
           >
-            {q.mandatory ? 'OBRIGATÓRIA' : 'OPCIONAL'}
+            {q.sideQuest}
           </Text>
-          <Text style={styles.seq}>SEQ {q.streak}</Text>
+          <Text style={[styles.sideBonus, { color: q.sideQuestDone ? ac : '#6E84A8' }]}>+10%</Text>
         </View>
-      </Pressable>
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={[styles.xp, { color: d.color }]}>+{d.xp}</Text>
-        <Text style={styles.diffLabel}>{d.label}</Text>
-      </View>
+      ) : null}
     </LinearGradient>
   );
 }
@@ -154,15 +185,13 @@ const styles = StyleSheet.create({
   },
 
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
     padding: 13,
     paddingHorizontal: 15,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(61,169,252,0.16)',
   },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 13 },
   check: {
     width: 28,
     height: 28,
@@ -171,6 +200,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginTop: 11,
+    marginLeft: 41,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(61,169,252,0.1)',
+  },
+  sideCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sideText: { flex: 1, fontFamily: Fonts.chivoRegular, fontSize: 12.5, lineHeight: 16 },
+  sideBonus: { fontFamily: Fonts.monoBold, fontSize: 9, letterSpacing: 0.5 },
   qName: { fontFamily: Fonts.rajSemiBold, fontSize: 15.5, letterSpacing: 0.2, lineHeight: 18 },
   qMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
   attrTag: {

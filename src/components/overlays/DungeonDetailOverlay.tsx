@@ -4,13 +4,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors, Fonts, RANK_COLOR, FILL } from '@/theme/tokens';
+import { dungeonXpSplit } from '@/game/logic';
 import { useGame } from '@/store/gameStore';
 import { IconChevronLeft, IconCheck } from '@/components/ui/icons';
 
 export function DungeonDetailOverlay() {
   const activeDungeon = useGame((s) => s.activeDungeon);
   const dungeons = useGame((s) => s.dungeons);
-  const toggleFloor = useGame((s) => s.toggleFloor);
+  const completeFloor = useGame((s) => s.completeFloor);
   const closeOverlay = useGame((s) => s.closeOverlay);
 
   const d = dungeons.find((x) => x.id === activeDungeon);
@@ -19,6 +20,10 @@ export function DungeonDetailOverlay() {
   const rc = RANK_COLOR[d.rank];
   const done = d.floors.filter((f) => f.done).length;
   const pct = Math.round((done / d.floors.length) * 100);
+  // The next clearable floor (first not-done); -1 means the dungeon is cleared.
+  const nextIdx = d.floors.findIndex((f) => !f.done);
+  const cleared = nextIdx === -1;
+  const { perFloor, completionBonus } = dungeonXpSplit(d.xp, d.floors.length);
 
   return (
     <View style={styles.root}>
@@ -37,8 +42,15 @@ export function DungeonDetailOverlay() {
           >
             <Text style={[styles.ghostRank, { color: rc }]}>{d.rank}</Text>
             <View>
-              <View style={[styles.rankChip, { borderColor: rc }]}>
-                <Text style={[styles.rankChipText, { color: rc }]}>DUNGEON · RANK {d.rank}</Text>
+              <View style={styles.chipRow}>
+                <View style={[styles.rankChip, { borderColor: rc }]}>
+                  <Text style={[styles.rankChipText, { color: rc }]}>DUNGEON · RANK {d.rank}</Text>
+                </View>
+                {cleared && (
+                  <View style={[styles.clearedChip, { borderColor: rc, backgroundColor: rc + '22' }]}>
+                    <Text style={[styles.rankChipText, { color: rc }]}>CONCLUÍDA</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.dName}>{d.name}</Text>
               <Text style={styles.dDesc}>{d.desc}</Text>
@@ -50,6 +62,7 @@ export function DungeonDetailOverlay() {
                 <View>
                   <Text style={styles.statLabel}>RECOMPENSA</Text>
                   <Text style={[styles.statValue, { color: Colors.glow }]}>+{d.xp} XP</Text>
+                  <Text style={styles.statSub}>50% nos andares · 50% ao concluir</Text>
                 </View>
               </View>
             </View>
@@ -59,14 +72,19 @@ export function DungeonDetailOverlay() {
           <View>
             {d.floors.map((f, i) => {
               const num = String(i + 1).padStart(2, '0');
+              const isNext = i === nextIdx;
+              const locked = !f.done && !isNext;
+              const isLast = i === d.floors.length - 1;
+              const dotColor = f.done ? rc : isNext ? rc : 'rgba(120,150,200,0.25)';
               return (
-                <View key={i} style={styles.floorRow}>
+                <View key={i} style={[styles.floorRow, locked && { opacity: 0.45 }]}>
                   <Pressable
-                    onPress={() => toggleFloor(d.id, i)}
+                    onPress={() => completeFloor(d.id, i)}
+                    disabled={!isNext}
                     style={[
                       styles.dot,
                       {
-                        borderColor: f.done ? rc : 'rgba(120,150,200,0.35)',
+                        borderColor: dotColor,
                         backgroundColor: f.done ? rc : 'transparent',
                         shadowColor: f.done ? rc : 'transparent',
                         shadowOpacity: f.done ? 0.4 : 0,
@@ -75,11 +93,21 @@ export function DungeonDetailOverlay() {
                       },
                     ]}
                   >
-                    {f.done && <IconCheck size={14} color={Colors.bgBase} />}
+                    {f.done ? (
+                      <IconCheck size={14} color={Colors.bgBase} />
+                    ) : locked ? (
+                      <Text style={styles.lockGlyph}>🔒</Text>
+                    ) : null}
                   </Pressable>
                   <View style={{ flex: 1, paddingVertical: 10 }}>
                     <Text style={styles.floorNum}>ANDAR {num}</Text>
-                    <Text style={[styles.floorName, { color: f.done ? Colors.text : '#8DA0C2' }]}>{f.n}</Text>
+                    <Text style={[styles.floorName, { color: f.done ? Colors.text : isNext ? Colors.text : '#8DA0C2' }]}>
+                      {f.n}
+                    </Text>
+                  </View>
+                  <View style={styles.floorReward}>
+                    <Text style={[styles.floorXp, { color: f.done ? rc : Colors.label }]}>+{perFloor[i]} XP</Text>
+                    {isLast && <Text style={styles.floorBonus}>+{completionBonus} ao concluir</Text>}
                   </View>
                 </View>
               );
@@ -106,7 +134,9 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   ghostRank: { position: 'absolute', top: -40, right: -15, fontFamily: Fonts.rajBold, fontSize: 160, opacity: 0.08, lineHeight: 160 },
-  rankChip: { alignSelf: 'flex-start', flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, marginBottom: 12 },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  rankChip: { alignSelf: 'flex-start', flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 },
+  clearedChip: { alignSelf: 'flex-start', flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 },
   rankChipText: { fontFamily: Fonts.monoRegular, fontSize: 10, letterSpacing: 1 },
   dName: { fontFamily: Fonts.rajBold, fontSize: 27, color: Colors.text, letterSpacing: 0.5, lineHeight: 28 },
   dDesc: { fontFamily: Fonts.chivoRegular, fontSize: 13, color: '#8DA0C2', lineHeight: 19.5, marginTop: 8 },
@@ -120,6 +150,7 @@ const styles = StyleSheet.create({
   },
   statLabel: { fontFamily: Fonts.monoRegular, fontSize: 9, letterSpacing: 1, color: Colors.label },
   statValue: { fontFamily: Fonts.rajBold, fontSize: 20 },
+  statSub: { fontFamily: Fonts.monoRegular, fontSize: 8.5, color: Colors.labelDim, letterSpacing: 0.3, marginTop: 2 },
 
   floorsLabel: { fontFamily: Fonts.monoRegular, fontSize: 10, letterSpacing: 2, color: Colors.labelDim, marginBottom: 12 },
   floorRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 6 },
@@ -131,6 +162,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  lockGlyph: { fontSize: 11, opacity: 0.8 },
   floorNum: { fontFamily: Fonts.monoRegular, fontSize: 9, color: Colors.labelDim, letterSpacing: 1 },
   floorName: { fontFamily: Fonts.rajSemiBold, fontSize: 16, letterSpacing: 0.3 },
+  floorReward: { alignItems: 'flex-end' },
+  floorXp: { fontFamily: Fonts.monoBold, fontSize: 12 },
+  floorBonus: { fontFamily: Fonts.monoRegular, fontSize: 8, color: Colors.labelDim, marginTop: 2 },
 });

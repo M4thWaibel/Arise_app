@@ -288,8 +288,8 @@ export default function Onboarding() {
                 <View style={styles.calibNote}>
                   <IconSparkle size={16} color={Colors.glow} />
                   <Text style={styles.calibText}>
-                    O Sistema gerará seus 5 atributos (nível 5–12) e seu nível inicial a partir
-                    destes dados. Rank inicial: <Text style={styles.calibE}>E</Text>.
+                    Você desperta no <Text style={styles.calibE}>nível 5</Text>, com os 5 atributos
+                    também no nível 5 e rank <Text style={styles.calibE}>E</Text>. Seus dados servem ao Sistema.
                   </Text>
                 </View>
               </View>

@@ -19,6 +19,13 @@ export interface Quest {
   // day's metric reaches `metricGoal`.
   metric?: HealthMetric;
   metricGoal?: number;
+  // Optional extra objective. When present AND `sideQuestDone` is checked at the
+  // moment the quest is completed, the quest awards +10% XP.
+  sideQuest?: string;
+  sideQuestDone?: boolean;
+  // XP actually granted on completion (frozen at complete-time so uncompleting
+  // reverses the exact amount, even if the side quest / difficulty was edited).
+  awarded?: number;
 }
 
 export interface Floor {
@@ -88,11 +95,18 @@ export interface HabitForm {
   freq: string;
   metric: HealthMetric | 'none';
   metricGoal: string;
+  sideQuest: string;
+}
+
+export interface DungeonForm {
+  name: string;
+  desc: string;
+  rank: string;
+  floors: string[];
 }
 
 export interface LevelUpInfo {
   newLevel: number;
-  gainedPoints: number;
   prevRank: string;
   newRank: string;
   rankUp: boolean;

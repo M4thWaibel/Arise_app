@@ -2,16 +2,26 @@
 import type { AttrKey } from '@/theme/tokens';
 import type { AttrState } from './types';
 
+// Both levels start at 5. XP to advance FROM level n to n+1 grows geometrically
+// (×1.25 per level) from the level-5 anchors: 1250 for the global level, 1000
+// for a status. A quest credits the SAME XP to both pools — only the threshold
+// differs, so a status (lower anchor) levels faster than the global level.
 export function xpForLevel(n: number): number {
-  return Math.round(100 * Math.pow(n, 1.5));
+  return Math.round(1250 * Math.pow(1.25, n - 5));
+}
+
+// XP to advance an ATTRIBUTE (status) from level n to n+1 (anchor 1000 at lvl 5).
+export function xpForAttrLevel(n: number): number {
+  return Math.round(1000 * Math.pow(1.25, n - 5));
 }
 
 const RANK_TABLE: [number, string, string][] = [
-  [80, 'S', '#C084FC'],
-  [55, 'A', '#8B5CF6'],
-  [35, 'B', '#1E90FF'],
-  [20, 'C', '#00C2FF'],
-  [10, 'D', '#3DA9FC'],
+  [100, 'SS', '#FFD24A'],
+  [71, 'S', '#C084FC'],
+  [51, 'A', '#8B5CF6'],
+  [33, 'B', '#1E90FF'],
+  [26, 'C', '#00C2FF'],
+  [17, 'D', '#3DA9FC'],
   [1, 'E', '#7A8BA8'],
 ];
 
@@ -20,6 +30,22 @@ export function rankFromLevel(l: number): { letter: string; color: string } {
     if (l >= m) return { letter, color };
   }
   return { letter: 'E', color: '#7A8BA8' };
+}
+
+// Dungeon XP distribution: HALF of the total is split equally across the floors
+// (any rounding remainder lands on the last floor), and the other half is a
+// completion bonus granted only when the final floor is cleared. The per-floor
+// shares plus the completion bonus always sum back to exactly `total`.
+export function dungeonXpSplit(
+  total: number,
+  floors: number,
+): { perFloor: number[]; completionBonus: number } {
+  if (floors <= 0) return { perFloor: [], completionBonus: total };
+  const half = Math.round(total * 0.5);
+  const base = Math.floor(half / floors);
+  const rem = half - base * floors;
+  const perFloor = Array.from({ length: floors }, (_, i) => base + (i === floors - 1 ? rem : 0));
+  return { perFloor, completionBonus: total - half };
 }
 
 export function classFromAttrs(attrs: Record<AttrKey, AttrState>): {

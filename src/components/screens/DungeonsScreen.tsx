@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Fonts, RANK_COLOR } from '@/theme/tokens';
 import { useGame } from '@/store/gameStore';
 import { ProgressBar } from '@/components/ui/primitives';
+import { IconPlus } from '@/components/ui/icons';
 import type { Dungeon } from '@/game/types';
 
 function DungeonCard({ d }: { d: Dungeon }) {
@@ -48,26 +49,43 @@ function DungeonCard({ d }: { d: Dungeon }) {
 export function DungeonsScreen() {
   const insets = useSafeAreaInsets();
   const dungeons = useGame((s) => s.dungeons);
+  const openCreateDungeon = useGame((s) => s.openCreateDungeon);
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={[styles.content, { paddingBottom: 96 + insets.bottom }]}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.sysLabel}>[ DUNGEONS ]</Text>
-      <Text style={styles.h1}>Suas metas</Text>
-      <View style={{ gap: 11 }}>
-        {dungeons.map((d) => (
-          <DungeonCard key={d.id} d={d} />
-        ))}
-        {dungeons.length === 0 && (
-          <View style={styles.empty}>
-            <Text style={styles.emptyLabel}>[ NENHUMA DUNGEON ]</Text>
-            <Text style={styles.emptyText}>Suas metas de longo prazo aparecerão aqui.</Text>
-          </View>
-        )}
-      </View>
-    </ScrollView>
+    <View style={styles.root}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 96 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.sysLabel}>[ DUNGEONS ]</Text>
+        <Text style={styles.h1}>Suas metas</Text>
+        <View style={{ gap: 11 }}>
+          {dungeons.map((d) => (
+            <DungeonCard key={d.id} d={d} />
+          ))}
+          {dungeons.length === 0 && (
+            <View style={styles.empty}>
+              <Text style={styles.emptyLabel}>[ NENHUMA DUNGEON ]</Text>
+              <Text style={styles.emptyText}>
+                Suas metas de longo prazo aparecerão aqui.{'\n'}Toque em{' '}
+                <Text style={styles.emptyPlus}>+</Text> para forjar uma dungeon.
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* FAB nova dungeon */}
+      <Pressable onPress={openCreateDungeon} style={[styles.fabWrap, { bottom: 84 + insets.bottom }]}>
+        <LinearGradient
+          colors={['#8B5CF6', '#6D28D9']}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.7, y: 1 }}
+          style={styles.fab}
+        >
+          <IconPlus size={22} color="#fff" />
+        </LinearGradient>
+      </Pressable>
+    </View>
   );
 }
 
@@ -125,4 +143,19 @@ const styles = StyleSheet.create({
   },
   emptyLabel: { fontFamily: Fonts.monoRegular, fontSize: 11, letterSpacing: 2, color: Colors.labelDim, marginBottom: 8 },
   emptyText: { fontFamily: Fonts.chivoRegular, fontSize: 13, color: '#8DA0C2', lineHeight: 19.5, textAlign: 'center' },
+  emptyPlus: { color: Colors.purpleLight, fontFamily: Fonts.chivoBold },
+
+  fabWrap: { position: 'absolute', right: 18, zIndex: 6 },
+  fab: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#6D28D9',
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
 });

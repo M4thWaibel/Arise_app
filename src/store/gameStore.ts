@@ -3,12 +3,14 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { AttrKey, DiffKey } from '@/theme/tokens';
-import { DIFF, ATTRS } from '@/theme/tokens';
+import { DIFF, ATTRS, RANK_COLOR } from '@/theme/tokens';
 import {
   xpForLevel,
+  xpForAttrLevel,
   rankFromLevel,
   computeAttrs,
   nextMidnight,
+  dungeonXpSplit,
 } from '@/game/logic';
 import type {
   AttrState,
@@ -19,6 +21,7 @@ import type {
   Profile,
   SetupForm,
   HabitForm,
+  DungeonForm,
   LevelUpInfo,
   QuestFx,
   Alloc,
@@ -26,11 +29,92 @@ import type {
   FocusGateState,
 } from '@/game/types';
 
+// Total XP a dungeon is worth, by rank (drives the 50/50 floor split). Dungeons
+// span E–S only (SS is hunter-rank exclusive). Mirrors the prototype RANK_XP.
+export const DUNGEON_RANK_XP: Record<string, number> = {
+  E: 150,
+  D: 250,
+  C: 400,
+  B: 600,
+  A: 900,
+  S: 1200,
+};
+export const DUNGEON_RANKS = ['E', 'D', 'C', 'B', 'A', 'S'] as const;
+
 const ZERO_ALLOC: Alloc = { STR: 0, AGI: 0, INT: 0, VIT: 0, PER: 0 };
-const ORD = ['E', 'D', 'C', 'B', 'A', 'S'];
+const ORD = ['E', 'D', 'C', 'B', 'A', 'S', 'SS'];
+
+// Base XP for completing a quest, with the +10% side-quest bonus applied when the
+// quest has a side quest that was checked off before completion.
+function questGain(q: Quest): number {
+  const base = DIFF[q.diff].xp;
+  return q.sideQuest && q.sideQuestDone ? Math.round(base * 1.1) : base;
+}
+
+type GlobalXpPatch = {
+  xp: number;
+  level: number;
+  levelUp?: boolean;
+  hunterRank?: string;
+  levelUpInfo?: LevelUpInfo;
+};
+
+// Inverse of the level-up loop: remove `gain`, borrowing levels back down when
+// the XP underflows (so a completion that crossed a level boundary reverses
+// exactly instead of leaking a free level). Floors at level 1.
+function borrowDownXp(
+  level: number,
+  xp: number,
+  gain: number,
+  xpFn: (n: number) => number = xpForLevel,
+): { level: number; xp: number; borrowed: number } {
+  let lvl = level;
+  let x = xp - gain;
+  let borrowed = 0;
+  while (x < 0 && lvl > 1) {
+    lvl--;
+    x += xpFn(lvl);
+    borrowed++;
+  }
+  if (x < 0) x = 0;
+  return { level: lvl, xp: x, borrowed };
+}
+
+// Credit `gain` to the global XP pool, running the level-up loop (each level
+// grants 3 free points) and bumping the hunter rank if a threshold was crossed.
+// Shared by quest completion and dungeon-floor completion.
+function applyGlobalXp(
+  s: { xp: number; level: number; hunterRank: string },
+  gain: number,
+): GlobalXpPatch {
+  let xp = s.xp + gain;
+  let level = s.level;
+  let leveled = 0;
+  // Leveling up only raises the level — it grants no status points.
+  while (xp >= xpForLevel(level)) {
+    xp -= xpForLevel(level);
+    level++;
+    leveled++;
+  }
+  const patch: GlobalXpPatch = { xp, level };
+  if (leveled > 0) {
+    patch.levelUp = true;
+    let hr = s.hunterRank || 'E';
+    const der = rankFromLevel(level).letter;
+    if (ORD.indexOf(der) > ORD.indexOf(hr)) hr = der;
+    patch.hunterRank = hr;
+    patch.levelUpInfo = {
+      newLevel: level,
+      prevRank: s.hunterRank || 'E',
+      newRank: hr,
+      rankUp: hr !== (s.hunterRank || 'E'),
+    };
+  }
+  return patch;
+}
 
 function seedAttrs(): Record<AttrKey, AttrState> {
-  const xf = xpForLevel;
+  const xf = xpForAttrLevel; // attribute curve, so seeded xp stays under the level cap
   const attrs: Record<AttrKey, AttrState> = {
     STR: { level: 14, xp: 0 },
     AGI: { level: 9, xp: 0 },
@@ -121,12 +205,14 @@ export type OverlayKind =
   | 'penalty'
   | 'create'
   | 'dungeon'
+  | 'dungeonCreate'
   | 'settings'
   | 'sealed'
   | 'focusgate';
 export type ScreenKey = 'status' | 'quests' | 'dungeons' | 'titles';
 
-const DEFAULT_HABIT_FORM: HabitForm = { name: '', attr: 'STR', diff: 'medio', mandatory: true, freq: 'Diária', metric: 'none', metricGoal: '' };
+const DEFAULT_HABIT_FORM: HabitForm = { name: '', attr: 'STR', diff: 'medio', mandatory: true, freq: 'Diária', metric: 'none', metricGoal: '', sideQuest: '' };
+const DEFAULT_DUNGEON_FORM: DungeonForm = { name: '', desc: '', rank: 'C', floors: ['', ''] };
 const EMPTY_SETUP: SetupForm = { name: '', sex: '', age: '', weight: '', height: '' };
 
 interface GameState {
@@ -168,6 +254,8 @@ interface GameState {
   setupForm: SetupForm;
   setupError: boolean;
   form: HabitForm;
+  dungeonForm: DungeonForm;
+  dungeonError: boolean;
   hydrated: boolean;
 
   // actions
@@ -197,6 +285,7 @@ interface GameState {
   endFocusGate: (status: 'cleared' | 'failed') => void;
   recordViolation: () => void;
   toggleQuest: (id: number) => void;
+  toggleSideQuest: (id: number) => void;
   clearQuestFx: () => void;
   afterLevelUp: () => void;
   openDistribute: () => void;
@@ -206,13 +295,22 @@ interface GameState {
   openPenalty: () => void;
   clearPenalty: () => void;
   openDungeon: (id: string) => void;
-  toggleFloor: (did: string, idx: number) => void;
+  completeFloor: (did: string, idx: number) => void;
+  openCreateDungeon: () => void;
+  setDungeonName: (v: string) => void;
+  setDungeonDesc: (v: string) => void;
+  setDungeonRank: (r: string) => void;
+  setFloorText: (i: number, v: string) => void;
+  addFloor: () => void;
+  removeFloor: (i: number) => void;
+  saveDungeon: () => void;
   openCreate: () => void;
   setFormName: (v: string) => void;
   setFormAttr: (k: AttrKey) => void;
   setFormDiff: (k: DiffKey) => void;
   setFormMetric: (m: HabitForm['metric']) => void;
   setFormMetricGoal: (v: string) => void;
+  setFormSideQuest: (v: string) => void;
   toggleFormMandatory: () => void;
   saveHabit: () => void;
 }
@@ -262,6 +360,8 @@ export const useGame = create<GameState>()(
       setupForm: { name: '', sex: '', age: '', weight: '', height: '' },
       setupError: false,
       form: { ...DEFAULT_HABIT_FORM },
+      dungeonForm: { ...DEFAULT_DUNGEON_FORM, floors: [...DEFAULT_DUNGEON_FORM.floors] },
+      dungeonError: false,
       hydrated: false,
 
       setHydrated: () => set({ hydrated: true }),
@@ -271,7 +371,7 @@ export const useGame = create<GameState>()(
         const s = get();
         if (Date.now() >= s.resetTarget) {
           set({
-            quests: s.quests.map((q) => ({ ...q, done: false })),
+            quests: s.quests.map((q) => ({ ...q, done: false, sideQuestDone: false, awarded: undefined })),
             resetTarget: nextMidnight(),
           });
         }
@@ -296,12 +396,11 @@ export const useGame = create<GameState>()(
           set({ setupError: true });
           return;
         }
-        const lvls = computeAttrs(age, weight, f.sex || 'O');
+        // Every Hunter awakens at level 5, with all 5 attributes at level 5, rank E.
         const attrs = {} as Record<AttrKey, AttrState>;
         (['STR', 'AGI', 'INT', 'VIT', 'PER'] as AttrKey[]).forEach((k) => {
-          attrs[k] = { level: lvls[k], xp: Math.round(xpForLevel(lvls[k]) * 0.35) };
+          attrs[k] = { level: 5, xp: 0 };
         });
-        const level = 8 + Math.floor(Math.random() * 5);
         set({
           playerName: f.name.trim().toUpperCase(),
           profile: {
@@ -311,8 +410,8 @@ export const useGame = create<GameState>()(
             height: f.height ? parseInt(f.height, 10) : null,
           },
           attrs,
-          level,
-          xp: Math.max(0, xpForLevel(level) - 75),
+          level: 5,
+          xp: 0,
           hunterRank: 'E',
           freePoints: 0,
           screen: 'status',
@@ -366,7 +465,7 @@ export const useGame = create<GameState>()(
         const lvls = computeAttrs(age, weight, f.sex || 'O');
         const attrs = {} as Record<AttrKey, AttrState>;
         (['STR', 'AGI', 'INT', 'VIT', 'PER'] as AttrKey[]).forEach((k) => {
-          attrs[k] = { level: lvls[k], xp: Math.round(xpForLevel(lvls[k]) * 0.35) };
+          attrs[k] = { level: lvls[k], xp: Math.round(xpForAttrLevel(lvls[k]) * 0.35) };
         });
         set({ attrs, setupError: false });
       },
@@ -389,68 +488,56 @@ export const useGame = create<GameState>()(
       toggleQuest: (id) => {
         const q = get().quests.find((x) => x.id === id);
         if (!q) return;
-        const gain = DIFF[q.diff].xp;
         if (q.done) {
+          // Reverse the exact amount that was granted (frozen in `awarded`),
+          // borrowing back any level-ups it caused so no free level/points leak.
+          const gain = q.awarded ?? questGain(q);
           set((s) => {
             const quests = s.quests.map((x) =>
-              x.id === id ? { ...x, done: false, streak: Math.max(0, x.streak - 1) } : x,
+              x.id === id ? { ...x, done: false, streak: Math.max(0, x.streak - 1), awarded: undefined } : x,
             );
             const attrs = { ...s.attrs };
-            const a = { ...attrs[q.attr] };
-            a.xp = Math.max(0, a.xp - gain);
-            attrs[q.attr] = a;
-            return { quests, attrs, xp: Math.max(0, s.xp - gain) };
+            const ra = borrowDownXp(attrs[q.attr].level, attrs[q.attr].xp, gain, xpForAttrLevel);
+            attrs[q.attr] = { level: ra.level, xp: ra.xp };
+            const rg = borrowDownXp(s.level, s.xp, gain);
+            return {
+              quests,
+              attrs,
+              level: rg.level,
+              xp: rg.xp,
+              freePoints: Math.max(0, s.freePoints - rg.borrowed * 3),
+              hunterRank: rankFromLevel(rg.level).letter,
+            };
           });
           return;
         }
+        const gain = questGain(q);
         const ac = ATTRS.find((a) => a.key === q.attr)!.color;
         set((s) => {
           const quests = s.quests.map((x) =>
-            x.id === id ? { ...x, done: true, streak: x.streak + 1 } : x,
+            x.id === id ? { ...x, done: true, streak: x.streak + 1, awarded: gain } : x,
           );
           const attrs = { ...s.attrs };
           const a = { ...attrs[q.attr] };
           a.xp += gain;
-          while (a.xp >= xpForLevel(a.level)) {
-            a.xp -= xpForLevel(a.level);
+          while (a.xp >= xpForAttrLevel(a.level)) {
+            a.xp -= xpForAttrLevel(a.level);
             a.level++;
           }
           attrs[q.attr] = a;
-          let xp = s.xp + gain;
-          let level = s.level;
-          let fp = s.freePoints;
-          let leveled = 0;
-          while (xp >= xpForLevel(level)) {
-            xp -= xpForLevel(level);
-            level++;
-            fp += 3;
-            leveled++;
-          }
-          const patch: Partial<GameState> = {
-            quests,
-            attrs,
-            xp,
-            level,
-            freePoints: fp,
-            questFx: { amount: gain, color: ac, key: Date.now() },
-          };
-          if (leveled > 0) {
-            patch.levelUp = true;
-            let hr = s.hunterRank || 'E';
-            const der = rankFromLevel(level).letter;
-            if (ORD.indexOf(der) > ORD.indexOf(hr)) hr = der;
-            patch.hunterRank = hr;
-            patch.levelUpInfo = {
-              newLevel: level,
-              gainedPoints: leveled * 3,
-              prevRank: s.hunterRank || 'E',
-              newRank: hr,
-              rankUp: hr !== (s.hunterRank || 'E'),
-            };
-          }
-          return patch;
+          const g = applyGlobalXp(s, gain);
+          return { quests, attrs, questFx: { amount: gain, color: ac, key: Date.now() }, ...g };
         });
       },
+
+      // Toggle the side quest's own check. Only allowed while the parent quest is
+      // not yet completed — the +10% is locked in at completion time.
+      toggleSideQuest: (id) =>
+        set((s) => ({
+          quests: s.quests.map((q) =>
+            q.id === id && q.sideQuest && !q.done ? { ...q, sideQuestDone: !q.sideQuestDone } : q,
+          ),
+        })),
 
       clearQuestFx: () => set({ questFx: null }),
 
@@ -502,15 +589,74 @@ export const useGame = create<GameState>()(
 
       openDungeon: (id) => set({ activeDungeon: id, overlay: 'dungeon' }),
 
-      toggleFloor: (did, idx) =>
+      // Floors clear top-to-bottom: only the first not-yet-done floor can be
+      // completed, and floors never un-complete. Each floor grants its split
+      // share; clearing the last floor also grants the 50% completion bonus.
+      completeFloor: (did, idx) => {
+        const d = get().dungeons.find((x) => x.id === did);
+        if (!d) return;
+        const nextIdx = d.floors.findIndex((f) => !f.done);
+        if (nextIdx === -1 || idx !== nextIdx) return; // locked or already cleared
+        const n = d.floors.length;
+        const isLast = idx === n - 1;
+        const { perFloor, completionBonus } = dungeonXpSplit(d.xp, n);
+        const gain = perFloor[idx] + (isLast ? completionBonus : 0);
+        const color = RANK_COLOR[d.rank] ?? '#3DA9FC';
         set((s) => {
-          const dungeons = s.dungeons.map((d) => {
-            if (d.id !== did) return d;
-            const floors = d.floors.map((f, i) => (i === idx ? { ...f, done: !f.done } : f));
-            return { ...d, floors };
-          });
-          return { dungeons };
+          const dungeons = s.dungeons.map((x) =>
+            x.id === did
+              ? { ...x, floors: x.floors.map((f, i) => (i === idx ? { ...f, done: true } : f)) }
+              : x,
+          );
+          const g = applyGlobalXp(s, gain);
+          return { dungeons, questFx: { amount: gain, color, key: Date.now() }, ...g };
+        });
+      },
+
+      openCreateDungeon: () =>
+        set({
+          dungeonForm: { ...DEFAULT_DUNGEON_FORM, floors: [...DEFAULT_DUNGEON_FORM.floors] },
+          dungeonError: false,
+          overlay: 'dungeonCreate',
         }),
+      setDungeonName: (v) => set((s) => ({ dungeonForm: { ...s.dungeonForm, name: v } })),
+      setDungeonDesc: (v) => set((s) => ({ dungeonForm: { ...s.dungeonForm, desc: v } })),
+      setDungeonRank: (r) => set((s) => ({ dungeonForm: { ...s.dungeonForm, rank: r } })),
+      setFloorText: (i, v) =>
+        set((s) => {
+          const floors = s.dungeonForm.floors.slice();
+          floors[i] = v;
+          return { dungeonForm: { ...s.dungeonForm, floors } };
+        }),
+      addFloor: () =>
+        set((s) => ({ dungeonForm: { ...s.dungeonForm, floors: [...s.dungeonForm.floors, ''] } })),
+      removeFloor: (i) =>
+        set((s) => {
+          const floors = s.dungeonForm.floors.filter((_, idx) => idx !== i);
+          return { dungeonForm: { ...s.dungeonForm, floors: floors.length ? floors : [''] } };
+        }),
+      saveDungeon: () => {
+        const f = get().dungeonForm;
+        const floors = f.floors.map((x) => x.trim()).filter(Boolean);
+        if (!f.name.trim() || floors.length === 0) {
+          set({ dungeonError: true });
+          return;
+        }
+        const dungeon: Dungeon = {
+          id: 'd' + Date.now(),
+          name: f.name.trim(),
+          rank: f.rank,
+          xp: DUNGEON_RANK_XP[f.rank] ?? DUNGEON_RANK_XP.C,
+          desc: f.desc.trim() || 'Meta de longo prazo definida por você.',
+          floors: floors.map((n) => ({ n, done: false })),
+        };
+        set((s) => ({
+          dungeons: [...s.dungeons, dungeon],
+          overlay: null,
+          dungeonError: false,
+          screen: 'dungeons',
+        }));
+      },
 
       openCreate: () =>
         set({ form: { ...DEFAULT_HABIT_FORM }, editingId: null, overlay: 'create' }),
@@ -539,20 +685,18 @@ export const useGame = create<GameState>()(
             const attrs = { ...s.attrs };
             const per = { ...attrs.PER };
             per.xp += 40;
-            while (per.xp >= xpForLevel(per.level)) {
-              per.xp -= xpForLevel(per.level);
+            while (per.xp >= xpForAttrLevel(per.level)) {
+              per.xp -= xpForAttrLevel(per.level);
               per.level++;
             }
             attrs.PER = per;
             let xp = s.xp + 40;
             let level = s.level;
-            let fp = s.freePoints;
             while (xp >= xpForLevel(level)) {
               xp -= xpForLevel(level);
               level++;
-              fp += 3;
             }
-            return { attrs, xp, level, freePoints: fp, focusGate: null };
+            return { attrs, xp, level, focusGate: null };
           }
           return { focusGate: { ...s.focusGate, status: 'failed' } };
         }),
@@ -585,6 +729,7 @@ export const useGame = create<GameState>()(
             freq: 'Diária',
             metric: q.metric ?? 'none',
             metricGoal: q.metricGoal ? String(q.metricGoal) : '',
+            sideQuest: q.sideQuest ?? '',
           },
           editingId: id,
           overlay: 'create',
@@ -603,6 +748,7 @@ export const useGame = create<GameState>()(
       setFormDiff: (k) => set((s) => ({ form: { ...s.form, diff: k } })),
       setFormMetric: (m) => set((s) => ({ form: { ...s.form, metric: m } })),
       setFormMetricGoal: (v) => set((s) => ({ form: { ...s.form, metricGoal: v.replace(/[^0-9]/g, '') } })),
+      setFormSideQuest: (v) => set((s) => ({ form: { ...s.form, sideQuest: v } })),
       toggleFormMandatory: () =>
         set((s) => ({ form: { ...s.form, mandatory: !s.form.mandatory } })),
 
@@ -612,11 +758,23 @@ export const useGame = create<GameState>()(
         const goalNum = parseInt(f.metricGoal, 10);
         const metric = f.metric !== 'none' && goalNum > 0 ? f.metric : undefined;
         const metricGoal = metric ? goalNum : undefined;
+        const sideQuest = f.sideQuest.trim() || undefined;
         set((s) => {
           if (s.editingId) {
             const quests = s.quests.map((q) =>
               q.id === s.editingId
-                ? { ...q, name: f.name.trim(), attr: f.attr, diff: f.diff, mandatory: f.mandatory, metric, metricGoal }
+                ? {
+                    ...q,
+                    name: f.name.trim(),
+                    attr: f.attr,
+                    diff: f.diff,
+                    mandatory: f.mandatory,
+                    metric,
+                    metricGoal,
+                    sideQuest,
+                    // Drop the side-quest check if its text was removed.
+                    sideQuestDone: sideQuest ? q.sideQuestDone : false,
+                  }
                 : q,
             );
             return { quests, overlay: null, editingId: null, form: { ...DEFAULT_HABIT_FORM } };
@@ -632,6 +790,8 @@ export const useGame = create<GameState>()(
             streak: 0,
             metric,
             metricGoal,
+            sideQuest,
+            sideQuestDone: false,
           };
           return {
             quests: [...s.quests, q],

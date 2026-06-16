@@ -106,10 +106,12 @@ export function LevelUpOverlay() {
         <Text style={styles.levelN}>Nível {info.newLevel}</Text>
       </Animated.View>
       <Animated.View style={[styles.footer, { opacity: footer }]}>
-        <View style={styles.pointsChip}>
-          <Text style={styles.pointsPlus}>+{info.gainedPoints}</Text>
-          <Text style={styles.pointsLabel}>pontos livres</Text>
-        </View>
+        {info.rankUp && (
+          <View style={styles.pointsChip}>
+            <Text style={styles.pointsLabel}>Novo rank</Text>
+            <Text style={styles.pointsPlus}>{info.newRank}</Text>
+          </View>
+        )}
         <Pressable onPress={afterLevelUp}>
           <LinearGradient
             colors={['#3DA9FC', '#1E6FD0']}

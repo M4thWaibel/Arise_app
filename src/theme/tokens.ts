@@ -77,6 +77,7 @@ export const RANK_COLOR: Record<string, string> = {
   B: '#1E90FF',
   A: '#8B5CF6',
   S: '#C084FC',
+  SS: '#FFD24A',
 };
 
 export const RARITY_COLOR: Record<string, string> = {
